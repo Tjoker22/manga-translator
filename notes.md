@@ -4,8 +4,8 @@
 
 ### Phase 1 - Proxmox Host Configuration
 
-- ran some commands via cli to check and see if IOMMU was already enabled and running.
-  - resuts found IOMMU is enabled, populated, and good to go
+- ran `dmesg | grep -e DMAR -e IOMMU -e AMD-Vi` and `ls /sys/kernel/iommu_groups` to check and see if IOMMU was already enabled and running.
+
 ```bash
 ~$ dmesg | grep -e DMAR -e IOMMU -e AMD-Vi
 dmesg: read kernel buffer failed: Operation not permitted
@@ -18,6 +18,8 @@ dmesg: read kernel buffer failed: Operation not permitted
 ~$ ls /sys/kernel/iommu_groups
 0  1  10  11  12  13  14  15  16  17  18  19  2  3  4  5  6  7  8  9
 ```
+
+  - resuts found IOMMU is enabled, populated, and good to go
 
 - edit`/etc/default/grub'
   - edit `GRUB_CMDLINE_LINUX_DEFAULT` to `GRUB_CMDLINE_LINUX_DEFAULT="quiet amd_iommu=on iommu=pt"`
@@ -84,3 +86,84 @@ blacklist nvidiafb
 
 ### Phase 2 - Create the VM in Proxmox Web UI
 
+**Work done via the proxmox webui**
+
+- Created the vm `ollama` with `vmid 380` with the following settings:
+```bash
+General Tab
+| Setting | Value |
+|---|---|
+| Name | `ollama` |
+| VM ID | `380` |
+
+OS Tab
+| Setting | Value |
+|---|---|
+| ISO Image | Ubuntu 24.04 LTS |
+
+System Tab — Critical for GPU passthrough
+| Setting | Value |
+|---|---|
+| Machine | `q35` |
+| BIOS | `OVMF (UEFI)` |
+| Add EFI Disk | checked |
+| SCSI Controller | `VirtIO SCSI single` |
+
+> **Why q35 and OVMF?** PCIe passthrough requires a chipset that supports PCIe.
+> The `q35` machine type emulates a modern Intel Q35 chipset with PCIe slots.
+> OVMF is the UEFI firmware for VMs — modern NVIDIA drivers require UEFI boot.
+
+Disks Tab
+| Setting | Value |
+|---|---|
+| Bus/Device | SCSI |
+| Disk Size | 60 GB |
+| Cache | Write back |
+| Discard | checked (enables TRIM) |
+
+> 60 GB is sufficient for the OS, Ollama, and model storage (Qwen2.5 7B is ~4.7 GB).
+> Increase if you plan to pull multiple large models.
+
+CPU Tab
+| Setting | Value |
+|---|---|
+| Cores | 8 |
+| Type | `host` |
+
+> **Why CPU type `host`?** This exposes the real CPU's feature flags to the VM.
+> NVIDIA's drivers check for specific CPU features. Using `host` prevents
+> compatibility issues and gives the VM full access to the Ryzen 5700X's capabilities.
+
+Memory Tab
+| Setting | Value |
+|---|---|
+| Memory | 32768 MB (32 GB) |
+| Ballooning Device | unchecked |
+
+> Ballooning dynamically adjusts VM RAM. It can cause instability with GPU
+> passthrough — disable it.
+
+Network Tab
+| Setting | Value |
+|---|---|
+| Model | `VirtIO (paravirtualized)` |
+| Bridge | `vmbr0` |
+```
+
+### Phase 3 - Add gpu to vm
+
+**as root in proxmox webui**
+
+- `VMID 380 → Hardware → Add → PCI Device`
+- from Raw Device dropdown list, find and select gpu
+  - check all functions, rom-bar, pci-express, and primary gpu
+- apply nvidia code 43 fix
+  - `nano /etc/pve/qemu-server/380.conf`
+  - add line at bottom: 
+    - `args: -cpu 'host,+kvm_pv_unhalt,+kvm_pv_eoi,hv_vendor_id=NV43FIX,kvm=off'`
+
+> **What this does:** `hv_vendor_id=NV43FIX` sets a fake hypervisor vendor ID
+> so the NVIDIA driver does not recognise it is running in a VM. `kvm=off`
+> hides the KVM signature. Together these prevent the Code 43 error.
+
+### Phase 4 - Insatll Ubuintu in the VM
