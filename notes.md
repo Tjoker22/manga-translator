@@ -1,8 +1,8 @@
 # Manga-Translator Notes
 
-## Build
+## GPU-passthrough setup
 
-### gpu-passthrough
+### Phase 1 - Proxmox Host Configuration
 
 - ran some commands via cli to check and see if IOMMU was already enabled and running.
   - resuts found IOMMU is enabled, populated, and good to go
@@ -41,23 +41,8 @@ vfio_virqfd
 # Updating this file still works, but it is undocumented and unsupported.
 ```
   
-  - ultimately created a new file in the /etc/moduel-load.d/ called vfio.conf amd added the kernel modules from above. 
-  - ran `update-initramfs -u -k all` for reboot persitence then rebooted the system
-  - `lspci -nnk | grep -A3 nvidia ` after reboot
-
-```bash
-~$ lspci -nnk | grep -A3 nvidia
-        Kernel modules: nvidiafb, nouveau, nova_core
-2b:00.1 Audio device [0403]: NVIDIA Corporation TU104 HD Audio Controller [10de:10f8] (rev a1)
-        Subsystem: Micro-Star International Co., Ltd. [MSI] Device [1462:3752]
-        Kernel driver in use: snd_hda_intel
---
-        Kernel driver in use: nvidia-gpu
-        Kernel modules: i2c_nvidia_gpu
-2c:00.0 Non-Essential Instrumentation [1300]: Advanced Micro Devices, Inc. [AMD] Starship/Matisse PCIe Dummy Function [1022:148a]
-        Subsystem: Micro-Star International Co., Ltd. [MSI] Device [1462:7c56]
-2d:00.0 Non-Essential Instrumentation [1300]: Advanced Micro Devices, Inc. [AMD] Starship/Matisse Reserved SPP [1022:1485]
-```
+  - created a new file in the /etc/moduel-load.d/ called vfio.conf amd added the kernel modules from above. 
+  - updated this part of the setup guide
 
 - find gpuid's with `~$ lspci -nn | grep -i nvidia`
 
@@ -97,4 +82,5 @@ blacklist nvidiafb
 2d:00.0 Non-Essential Instrumentation [1300]: Advanced Micro Devices, Inc. [AMD] Starship/Matisse Reserved SPP [1022:1485]
 ```
 
-- 
+### Phase 2 - Create the VM in Proxmox Web UI
+
