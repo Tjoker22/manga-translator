@@ -78,7 +78,7 @@ It acts as the middleman — intercepting the GPU from the host OS and handing
 it to the VM instead.
 
 ```bash
-nano /etc/modules
+sudo nano /etc/modules-load.d/vfio.conf
 ```
 
 Add these four lines:
