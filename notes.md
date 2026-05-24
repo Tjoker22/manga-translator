@@ -89,6 +89,7 @@ blacklist nvidiafb
 **Work done via the proxmox webui**
 
 - Created the vm `ollama` with `vmid 380` with the following settings:
+
 ```bash
 General Tab
 | Setting | Value |
@@ -167,6 +168,7 @@ Network Tab
 > hides the KVM signature. Together these prevent the Code 43 error.
 
 ### Phase 4 - Insatll Ubuintu in the VM
+
 - Found tghat with the gpu set as the primary gpu for the machine you could not get a picture on the web ui consle and thus could not see the installer. Rooted and turned that setting off of rnow whilr installing. Will then turn the setting back on weh the install is complete and ssh connection is verified.
 - Set a static ip for ollama vmid 380 of 192.168.0.180/24 with 192.168.0.153 pi-hole and 1.1.1.1 set as dns
 - Installed live server with openssh server during install. 
@@ -183,9 +185,95 @@ sudo apt update`
   - `sudo apt install -y nvidia-driver-570`
 - **issue** with the driver being installed but not showing with `nvidia-smi`
   - `nvidia-driver-570 is already the newest version (570.211.01-0ubuntu1.24.04.1).`
+
 ```bash
 ~$ nvidia-smi
 NVIDIA-SMI has failed because it couldn't communicate with the NVIDIA driver. Make sure that the latest NVIDIA driver is installed and running.
 ```
 
-- look inrto this issue and also it appears that all ram is being used wehn lookin gat the vm staut page on the web ui, but when looking at btop i show that only approx 2% ram is in use?
+- made a few chnages and forced Secure Boot to disable with success and now have `nvidia-smi` displaying with driver `580`
+  - planned on using `570` but aftert a couple remove/reinstalls i made the desicion to go forward with `580`. Seems that PPA may be pulling the newest driver
+
+---
+
+**Step 1** — From inside the VM, run:
+`bashsudo mokutil --disable-validation`
+It will ask you to set a one-time password — enter anything simple, you'll need to type it again on the next screen. Something like 12345678 is fine, it's only used once.
+
+**Step 2** — Reboot the VM:
+`bashsudo reboot`
+
+**Step 3** — Watch the Proxmox console
+Before Ubuntu boots you'll see a blue MOK Manager screen. Use the arrow keys to navigate:
+Change Secure Boot state → enter your password → Continue → Yes → Reboot
+
+**Step 4** — After reboot, verify:
+`bashsudo mokutil --sb-state`
+\# Should say: SecureBoot disabled
+`sudo modprobe nvidia`
+\# No output = success
+`nvidia-smi`
+\# Should show your RTX 2060
+
+---
+
+- look into this issue and also it appears that all ram is being used wehn lookin gat the vm staut page on the web ui, but when looking at btop i show that only approx 2% ram is in use?
+  - since balloning was disabled during setup the vm has no way to accuratly display the memory useage with the proxmox host so it defaults to full use. 
+  - running top or btop will show what the system is acctually using at any time so it would be advised to keep an extra window open for it
+- 
+
+### Phase 6 - Insall CUDA Toolkit
+
+- used for parallel compute used to offload inference from cpu to gpu
+- `sudo apt install -y nvidia-cuda-toolkit` for install and `nvcc --version` to verify
+
+```bash
+~$ nvcc --version
+nvcc: NVIDIA (R) Cuda compiler driver
+Copyright (c) 2005-2023 NVIDIA Corporation
+Built on Fri_Jan__6_16:45:21_PST_2023
+Cuda compilation tools, release 12.0, V12.0.140
+Build cuda_12.0.r12.0/compiler.32267302_0
+```
+
+- version 12.0.140
+
+### Phase 7 - Install Ollama and Config binding
+
+- install ollama with:
+
+```bash
+curl -fsSL https://ollama.com/install.sh | sh`
+```
+
+- by default ollama will only listen to its local vm ip address 127.0.0.1
+  - edit ollama systemd service to set bind address to 0.0.0.0 so all devices can connect.
+  - `sudo systemctl edit ollama`
+  - add this in the top blank space of proceeding file:
+
+```bash
+[Service]
+Environment="OLLAMA_HOST=0.0.0.0:11434"
+```
+
+- save and then apply with `sudo systemctl daemon-reload && sudo systemctl restart ollama`
+- verify ollama is listening on all interfaces:
+- 
+```bash
+~$ sudo ss -tlnp | grep 11434
+LISTEN 0      4096               *:11434            *:*    users:(("ollama",pid=3976,fd=3))
+```
+
+- *:11434 shows all interfaces are being heard
+- pull ollama qwen2.5:7b model `ollama pull qwen2.5:7b`
+- test with `ollama run qwen2.5:7b "Translate from Japanese to English: ありがとうございます"`
+  - test was sucessful
+  - verified remote access from admin machine 
+
+```bash
+❯ curl http://192.168.0.180:11434
+Ollama is running%
+```
+
+- use the following to switch the model `ollama run qwen2.5:7b` or `ollama run qwen2.5:14b`
+- issue with pulling the 14b model as there is no more spcae?
