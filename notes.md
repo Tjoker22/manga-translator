@@ -277,3 +277,96 @@ Ollama is running%
 
 - use the following to switch the model `ollama run qwen2.5:7b` or `ollama run qwen2.5:14b`
 - issue with pulling the 14b model as there is no more spcae?
+  - solved issue with the following:
+  - 
+```bash
+run these to diagnose:
+df -h
+Filesystem                         Size  Used Avail Use% Mounted on
+tmpfs                              3.2G  1.3M  3.2G   1% /run
+efivarfs                           256K   92K  160K  37% /sys/firmware/efi/efivars
+/dev/mapper/ubuntu--vg-ubuntu--lv   28G   27G     0 100% /
+tmpfs                               16G     0   16G   0% /dev/shm
+tmpfs                              5.0M     0  5.0M   0% /run/lock
+/dev/sda2                          2.0G  105M  1.7G   6% /boot
+/dev/sda1                          1.1G  6.2M  1.1G   1% /boot/efi
+tmpfs                              3.2G   20K  3.2G   1% /run/user/1000
+admin-yoyo@ollama:~$ du -sh ~/.ollama/models/
+du: cannot access '/home/admin-yoyo/.ollama/models/': No such file or directory
+admin-yoyo@ollama:~$ sudo du -sh ~/.ollama/models/
+[sudo] password for admin-yoyo:
+du: cannot access '/home/admin-yoyo/.ollama/models/': No such file or directory
+admin-yoyo@ollama:~$ du -sh ~/.ollama/models/blobs/*
+du: cannot access '/home/admin-yoyo/.ollama/models/blobs/*': No such file or directory
+```
+
+Classic Ubuntu LVM setup. The output tells us everything:
+
+```
+/dev/mapper/ubuntu--vg-ubuntu--lv   28G   27G   0   100%   /
+```
+
+**Suspect A confirmed.** Ubuntu installed with LVM and only carved out a 28 GB logical volume from your 60 GB disk. The other ~30 GB is sitting there unallocated. Also notice the error from the pull command told us exactly where Ollama stores its models — `/usr/share/ollama/.ollama/models/` — not your home directory. That's why your `du` commands found nothing.
+
+---
+
+## The Fix — Expand the LVM Logical Volume
+
+This is a three-step process. No data loss, no reinstall. We're just telling Linux "use the space that's already there."
+
+**Step 1 — Confirm the layout**
+```bash
+sudo pvs && sudo vgs && sudo lvs
+```
+This shows the physical volume, volume group, and logical volume sizes. Paste it if you want to double-check before proceeding, but the `df` output already makes the situation clear.
+```shell
+admin-yoyo@ollama:~$ sudo pvs && sudo vgs && sudo lvs
+  PV         VG        Fmt  Attr PSize   PFree
+  /dev/sda3  ubuntu-vg lvm2 a--  <56.95g 28.47g
+  VG        #PV #LV #SN Attr   VSize   VFree
+  ubuntu-vg   1   1   0 wz--n- <56.95g 28.47g
+  LV        VG        Attr       LSize  Pool Origin Data%  Meta%  Move Log Cpy%Sync Convert
+  ubuntu-lv ubuntu-vg -wi-ao---- 28.47g
+```
+
+**Step 2 — Expand the physical volume to fill the disk**
+```bash
+sudo pvresize /dev/sda3
+```
+> `sda3` is almost certainly the LVM partition — Ubuntu's default installer puts EFI on sda1, boot on sda2, and LVM on sda3. The `pvresize` command tells LVM "the physical disk got bigger, update your records."
+```shell
+~$ sudo pvresize /dev/sda3 Physical volume "/dev/sda3" changed 1 physical volume(s) resized or updated / 0 physical volume(s) not resized
+```
+
+**Step 3 — Extend the logical volume into that free space**
+```bash
+sudo lvextend -l +100%FREE /dev/mapper/ubuntu--vg-ubuntu--lv
+```
+> `-l +100%FREE` means "give this LV all remaining unallocated space in the volume group." You could also do `-L +30G` to add exactly 30 GB, but `+100%FREE` is cleaner.
+```shell
+~$ sudo lvextend -l +100%FREE /dev/mapper/ubuntu--vg-ubuntu--lv Size of logical volume ubuntu-vg/ubuntu-lv changed from 28.47 GiB (7289 extents) to <56.95 GiB (14578 extents). Logical volume ubuntu-vg/ubuntu-lv successfully resized.
+```
+
+**Step 4 — Resize the filesystem to match**
+```bash
+sudo resize2fs /dev/mapper/ubuntu--vg-ubuntu--lv
+```
+> The LV is now bigger, but the filesystem inside it doesn't know yet. `resize2fs` expands the ext4 filesystem to fill the new LV size. This is the step that actually makes the space usable.
+```shell
+~$ sudo resize2fs /dev/mapper/ubuntu--vg-ubuntu--lv 
+resize2fs 1.47.0 (5-Feb-2023) Filesystem at /dev/mapper/ubuntu--vg-ubuntu--lv is mounted on /; on-line resizing required old_desc_blocks = 4, new_desc_blocks = 8 The filesystem on /dev/mapper/ubuntu--vg-ubuntu--lv is now 14927872 (4k) blocks long.
+```
+
+**Step 5 — Verify**
+```bash
+df -h /
+```
+You should now see something like:
+```
+/dev/mapper/ubuntu--vg-ubuntu--lv   57G   27G   28G   49%   /
+```
+
+```shell
+~$ df -h / Filesystem Size Used Avail Use% Mounted on /dev/mapper/ubuntu--vg-ubuntu--lv 56G 27G 27G 50% /
+```
+--- 
