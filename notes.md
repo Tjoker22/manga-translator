@@ -167,3 +167,25 @@ Network Tab
 > hides the KVM signature. Together these prevent the Code 43 error.
 
 ### Phase 4 - Insatll Ubuintu in the VM
+- Found tghat with the gpu set as the primary gpu for the machine you could not get a picture on the web ui consle and thus could not see the installer. Rooted and turned that setting off of rnow whilr installing. Will then turn the setting back on weh the install is complete and ssh connection is verified.
+- Set a static ip for ollama vmid 380 of 192.168.0.180/24 with 192.168.0.153 pi-hole and 1.1.1.1 set as dns
+- Installed live server with openssh server during install. 
+- used defaults for msot all settings including disk size and layout
+- sucessfull install of the server (ollama) and it is reacable via ssh to my created user
+
+### Phase 5 - Install Nvidia drivers
+
+- full system update and upgrade
+- added graphics drives PPA for stabel nvidia drivers
+`sudo add-apt-repository ppa:graphics-drivers/ppa -y
+sudo apt update`
+- updated the drive used in the guide from `535` to `570`
+  - `sudo apt install -y nvidia-driver-570`
+- **issue** with the driver being installed but not showing with `nvidia-smi`
+  - `nvidia-driver-570 is already the newest version (570.211.01-0ubuntu1.24.04.1).`
+```bash
+~$ nvidia-smi
+NVIDIA-SMI has failed because it couldn't communicate with the NVIDIA driver. Make sure that the latest NVIDIA driver is installed and running.
+```
+
+- look inrto this issue and also it appears that all ram is being used wehn lookin gat the vm staut page on the web ui, but when looking at btop i show that only approx 2% ram is in use?
