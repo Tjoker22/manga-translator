@@ -370,3 +370,22 @@ You should now see something like:
 ~$ df -h / Filesystem Size Used Avail Use% Mounted on /dev/mapper/ubuntu--vg-ubuntu--lv 56G 27G 27G 50% /
 ```
 --- 
+
+## Manga-translator VM 385
+
+> Following 03-dev-environment-setup.md
+
+- set static ip on vm via the installer then veified it at /etc/netplan/50-cloud-init.yaml - 192.168.0.185
+- ran update and upgrade
+- Installed following packages
+  - git curl wget build-essential \
+  python3-dev python3-pip \
+  libgl1 libglib2.0-0 \
+  libsm6 libxext6 libxrender-dev \
+  ffmpeg \
+  fonts-noto fonts-noto-cjk \
+  unzip
+
+### Phase 5 Python version mgmt
+
+- begin here
